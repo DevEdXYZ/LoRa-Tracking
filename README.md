@@ -1,8 +1,18 @@
 # LoRa-Tracking
-## Tracking System to be able to track a wearer and relay positional data over LoRa to a basestation where it is visualised.
 
-### using: using a feather-rp2040-rfm95, adafruit-ultimate-gps, adafruit-BNO085 9-dof IMU. 
+This repository contains a simple LoRa based tracking system.
 
-![Image](https://github.com/user-attachments/assets/79d8a2e6-6965-484a-b2f5-0653db243233)
+The wearable unit obtains a GPS fix when available and periodically
+transmits its position, heading and step count to a base station.
+The receiver displays the last known location on a Tkinter map.
 
-![Image](https://github.com/user-attachments/assets/01b2a21c-1654-4128-8e9d-bcb553f230ef)
+## Hardware
+
+- Feather RP2040 with RFM95 LoRa module
+- Adafruit Ultimate GPS
+- Adafruit BNO085 9‑DoF IMU
+
+## Directory layout
+
+- `wearable/code.py` – CircuitPython firmware for the tracker
+- `basestation/code.py` – desktop application showing the received location
