@@ -1,12 +1,15 @@
 """LoRa Live-Tracker – v5
 ====================================================
-Additions on 2025-07-07 (2nd batch):
+Additions on 2025-07-08:
 
 • Theme selector: Dark / Light / Original (OpenStreetMap).
 • Heading indicator: thin orange segment, 4 m long (was 15 m).
+• Refresh button
+• Retry attempts after disconnect
 
 All other v4 features retained.
 """
+
 
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ import serial
 import customtkinter as ctk
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageDraw, ImageTk
+import webbrowser, tempfile, textwrap
 
 # ─── serial configuration ─────────────────────────────────────
 SERIAL_PORT = "COM4"        # ← adjust to your port
@@ -122,11 +126,35 @@ class TrackerApp:
         self.map.set_zoom(ZOOM_LEVEL)
 
         # Serial ------------------------------------------------
-        try:
-            self.ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT_S)
-        except serial.SerialException as e:
-            ctk.CTkMessagebox(title="Serial error", message=str(e))
-            raise SystemExit from e
+        self.ser = None
+        self.serial_connected = False
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 2000  # ms between reconnection attempts
+        
+        # Serial status indicator
+        self.serial_status_frame = ctk.CTkFrame(self.sidebar, corner_radius=6)
+        self.serial_status_frame.pack(fill="x", pady=6, padx=8)
+        
+        self.serial_status_label = ctk.CTkLabel(
+            self.serial_status_frame,
+            text=f"Serial ({SERIAL_PORT}): Connecting...",
+            font=self.f_small
+        )
+        self.serial_status_label.pack(pady=(4, 2))
+        
+        self.reconnect_button = ctk.CTkButton(
+            self.serial_status_frame,
+            text="Refresh",
+            width=100,
+            height=24,
+            font=self.f_small,
+            command=self.force_reconnect
+        )
+        self.reconnect_button.pack(pady=(0, 4))
+        
+        # Try initial connection
+        self.connect_serial()
 
         # Data structures --------------------------------------
         self.tracks: Dict[str, Dict] = {}
@@ -134,6 +162,63 @@ class TrackerApp:
         # Start loops -------------------------------------------
         root.after(UPDATE_INTERVAL, self.poll_serial)
         root.after(1000, self.refresh_age_labels)
+
+    # ─── Serial connection management ------------------------
+    def connect_serial(self):
+        """Attempt to connect to the serial port."""
+        try:
+            if self.ser and self.ser.is_open:
+                self.ser.close()
+            
+            self.ser = serial.Serial(SERIAL_PORT, BAUDRATE, timeout=TIMEOUT_S)
+            self.serial_connected = True
+            self.reconnect_attempts = 0
+            self.update_serial_status("Connected", "#43AA8B")
+            print(f"Serial connected to {SERIAL_PORT}")
+            
+        except serial.SerialException as e:
+            self.serial_connected = False
+            self.ser = None
+            self.reconnect_attempts += 1
+            
+            if self.reconnect_attempts <= self.max_reconnect_attempts:
+                self.update_serial_status(
+                    f"Reconnecting... ({self.reconnect_attempts}/{self.max_reconnect_attempts})",
+                    "#F8961E"
+                )
+                print(f"Serial connection failed, attempt {self.reconnect_attempts}: {e}")
+                # Schedule reconnection attempt
+                self.root.after(self.reconnect_delay, self.connect_serial)
+            else:
+                self.update_serial_status("Connection Failed", "#F94144")
+                print(f"Serial connection failed after {self.max_reconnect_attempts} attempts: {e}")
+    
+    def update_serial_status(self, status_text: str, color: str):
+        """Update the serial status indicator in the UI."""
+        self.serial_status_label.configure(
+            text=f"Serial ({SERIAL_PORT}): {status_text}",
+            text_color=color
+        )
+    
+    def check_serial_connection(self):
+        """Check if serial connection is still valid."""
+        if not self.ser or not self.ser.is_open:
+            self.serial_connected = False
+            return False
+        
+        try:
+            # Try to read the port's status
+            self.ser.in_waiting
+            return True
+        except (serial.SerialException, OSError):
+            self.serial_connected = False
+            return False
+
+    def force_reconnect(self):
+        """Force a reconnection attempt (triggered by button click)."""
+        self.reconnect_attempts = 0  # Reset attempt counter
+        self.update_serial_status("Reconnecting...", "#F8961E")
+        self.connect_serial()
 
     # ─── Theme switching --------------------------------------
     def set_theme(self, choice: str):
@@ -149,12 +234,29 @@ class TrackerApp:
 
     # ─── Serial polling ---------------------------------------
     def poll_serial(self):
-        try:
-            line = self.ser.readline().decode(errors="ignore").strip()
-        except Exception:
-            line = ""
+        line = ""
         ts = time.time()
+        
+        # Check if we have a valid connection
+        if not self.serial_connected or not self.check_serial_connection():
+            if self.serial_connected:  # Connection was lost
+                self.serial_connected = False
+                self.update_serial_status("Disconnected", "#F94144")
+                print("Serial connection lost, attempting to reconnect...")
+                self.connect_serial()
+        else:
+            # Try to read from serial port
+            try:
+                if self.ser and self.ser.in_waiting > 0:
+                    line = self.ser.readline().decode(errors="ignore").strip()
+            except (serial.SerialException, OSError) as e:
+                print(f"Serial read error: {e}")
+                self.serial_connected = False
+                self.update_serial_status("Read Error", "#F94144")
+                self.connect_serial()
+                line = ""
 
+        # Process any received data
         if line:
             m = DATA_RE.match(line)
             if m:
@@ -173,6 +275,8 @@ class TrackerApp:
                     heading=float(heading),
                     steps=int(steps),
                 )
+        
+        # Schedule next poll
         self.root.after(UPDATE_INTERVAL, self.poll_serial)
 
     # ─── Packet handling --------------------------------------
@@ -372,8 +476,25 @@ class TrackerApp:
                         width=ARROW_WIDTH, color=ARROW_COLOR)
             t["sidebar"]["lbl_key"].configure(text_color=colour)
 
+    # ─── Cleanup ---------------------------------------------- 
+    def cleanup(self):
+        """Clean up resources when closing the application."""
+        if self.ser and self.ser.is_open:
+            try:
+                self.ser.close()
+                print("Serial port closed successfully")
+            except Exception as e:
+                print(f"Error closing serial port: {e}")
+
 # ─── entry-point ──────────────────────────────────────────────
 if __name__ == "__main__":
     root = ctk.CTk()
-    TrackerApp(root)
+    app = TrackerApp(root)
+    
+    # Handle window close event
+    def on_closing():
+        app.cleanup()
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
