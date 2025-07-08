@@ -19,9 +19,9 @@ ELEV_DRIFT_RANGE = (-0.2, 0.3)
 people = [
     dict(unit=1, person=1, sos=0, lat=51.06864313, lon=-1.79400968,
          elev=1.0, heading=0.0, steps=0, next_emit=0.0),
-    dict(unit=1, person=2, sos=0, lat=51.06858213, lon=-1.79406068,
+    dict(unit=1, person=2, sos=1, lat=51.06858213, lon=-1.79406068,
          elev=1.0, heading=0.0, steps=0, next_emit=0.0),
-    dict(unit=2, person=1, sos=0, lat=51.06873213, lon=-1.79392868,
+    dict(unit=2, person=1, sos=1, lat=51.06873213, lon=-1.79392868,
          elev=1.0, heading=0.0, steps=0, next_emit=0.0),
 ]
 
