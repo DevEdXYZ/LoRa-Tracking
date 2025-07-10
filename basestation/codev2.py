@@ -9,6 +9,8 @@ All other v4 features retained.
 """
 
 
+#imports
+
 from __future__ import annotations
 
 import math
@@ -22,8 +24,10 @@ import customtkinter as ctk
 from tkintermapview import TkinterMapView
 from PIL import Image, ImageDraw, ImageTk
 
+
+
 # ─── serial configuration ─────────────────────────────────────
-SERIAL_PORT = "COM7"        # ← adjust to your port
+SERIAL_PORT = "COM4"        # ← adjust to your port
 BAUDRATE = 115200
 TIMEOUT_S = 0.1             # non-blocking read
 
