@@ -13,9 +13,6 @@ RADIO_FREQ_MHZ = 868.0
 CS    = digitalio.DigitalInOut(board.RFM_CS)
 RESET = digitalio.DigitalInOut(board.RFM_RST)
 
-# Optional on-board LED for visual feedback
-LED = digitalio.DigitalInOut(board.LED)
-LED.direction = digitalio.Direction.OUTPUT
 
 # Initialise radio
 rfm9x = adafruit_rfm9x.RFM9x(board.SPI(), CS, RESET, RADIO_FREQ_MHZ)
@@ -26,12 +23,10 @@ while True:
     packet = rfm9x.receive(timeout=5.0)   # seconds
 
     if packet is None:
-        LED.value = False
         print("-- no packet --")
         continue
 
     # Packet arrived
-    LED.value = True
     timestamp = time.monotonic()
 
     try:
